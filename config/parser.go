@@ -17,11 +17,15 @@ package config
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -49,6 +53,28 @@ func NewParserFromFile(fileName string) (*Parser, error) {
 	v.SetConfigFile(fileName)
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("unable to read the file %v: %w", fileName, err)
+	}
+	return &Parser{v: v}, nil
+}
+
+// NewParserFromDirectory creates a new Parser by reading the files in the given directory.
+func NewParserFromDirectory(path string) (*Parser, error) {
+	v := newViper()
+
+	files, err := getFilesInPath(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		fileBytes, e := ioutil.ReadFile(filepath.Clean(file))
+		if e != nil {
+			return nil, e
+		}
+		u := make(map[string]interface{})
+		yaml.Unmarshal(fileBytes, &u)
+		if err := v.MergeConfigMap(u); err != nil {
+			return nil, fmt.Errorf("unable to read from file %v: %w", file, err)
+		}
 	}
 	return &Parser{v: v}, nil
 }
@@ -184,4 +210,20 @@ func (l *Parser) ToStringMap() map[string]interface{} {
 		deepestMap[lastKey] = value
 	}
 	return m
+}
+
+// getFilesInPath returns all the filenames found within the directory at path
+func getFilesInPath(path string) ([]string, error) {
+	files := make([]string, 0)
+
+	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			files = append(files, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return []string{}, err
+	}
+	return files, nil
 }

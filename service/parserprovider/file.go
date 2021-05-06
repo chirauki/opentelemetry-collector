@@ -17,6 +17,7 @@ package parserprovider
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"go.opentelemetry.io/collector/config"
 )
@@ -33,6 +34,20 @@ func (fl *fileProvider) Get() (*config.Parser, error) {
 	fileName := getConfigFlag()
 	if fileName == "" {
 		return nil, errors.New("config file not specified")
+	}
+
+	// Check if path is a directory
+	info, err := os.Stat(fileName)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("path %q does not exist: %v", fileName, err)
+	}
+	if info.IsDir() {
+		cp, e := config.NewParserFromDirectory(fileName)
+		if e != nil {
+			return nil, fmt.Errorf("error loading config from directory %q: %v", fileName, e)
+		}
+
+		return cp, nil
 	}
 
 	cp, err := config.NewParserFromFile(fileName)
